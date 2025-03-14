@@ -1,30 +1,40 @@
-from fastapi import APIRouter, HTTPException, Depends
-from ..models.user import UserCreate, UserResponse
-from ..utils.auth import get_password_hash, verify_password, create_access_token
-from ..utils.db import db
+from fastapi import APIRouter, HTTPException
+from ..models.user import User
+from ..utils.auth import create_token
+from motor.motor_asyncio import AsyncIOMotorClient
+from ..config import settings
+import bcrypt
 
 router = APIRouter()
+client = AsyncIOMotorClient(settings.MONGODB_URL)
+db = client.netflix
 
-@router.post("/register", response_model=UserResponse)
-async def register(user: UserCreate):
+@router.post("/register")
+async def register(user: User):
     # Check if user exists
-    if await db.client.netflix.users.find_one({"email": user.email}):
-        raise HTTPException(status_code=400, detail="Email already registered")
+    if await db.users.find_one({"email": user.email}):
+        raise HTTPException(400, "Email already registered")
     
-    # Create new user
-    user_dict = user.dict()
-    user_dict["hashed_password"] = get_password_hash(user_dict.pop("password"))
-    user_dict["subscription"] = "basic"
+    # Hash password
+    hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
+    user.password = hashed.decode()
     
-    result = await db.client.netflix.users.insert_one(user_dict)
+    # Save user
+    result = await db.users.insert_one(user.dict())
     
-    return await db.client.netflix.users.find_one({"_id": result.inserted_id})
+    # Create token
+    token = create_token(str(result.inserted_id))
+    
+    return {"token": token}
 
 @router.post("/login")
 async def login(email: str, password: str):
-    user = await db.client.netflix.users.find_one({"email": email})
-    if not user or not verify_password(password, user["hashed_password"]):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    user = await db.users.find_one({"email": email})
+    if not user or not bcrypt.checkpw(
+        password.encode(), 
+        user["password"].encode()
+    ):
+        raise HTTPException(401, "Invalid credentials")
     
-    access_token = create_access_token({"sub": str(user["_id"])})
-    return {"access_token": access_token, "token_type": "bearer"} 
+    token = create_token(str(user["_id"]))
+    return {"token": token} 

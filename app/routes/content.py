@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from typing import List, Optional
 from ..models.content import Content
 from ..utils.auth import get_current_user
-from ..utils.db import db
+from motor.motor_asyncio import AsyncIOMotorClient
+from ..config import settings
 
 router = APIRouter()
+client = AsyncIOMotorClient(settings.MONGODB_URL)
+db = client.netflix
 
 @router.get("/", response_model=List[Content])
 async def get_content(
@@ -28,5 +31,16 @@ async def get_content(
             {"description": {"$regex": search, "$options": "i"}}
         ]
     
-    cursor = db.client.netflix.content.find(query).skip(skip).limit(limit)
-    return await cursor.to_list(length=limit) 
+    cursor = db.content.find(query).skip(skip).limit(limit)
+    content = await cursor.to_list(length=limit)
+    return content
+
+@router.get("/{content_id}")
+async def get_content_by_id(
+    content_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    content = await db.content.find_one({"_id": content_id})
+    if not content:
+        raise HTTPException(404, "Content not found")
+    return content 

@@ -35,22 +35,11 @@ class Season(BaseModel):
 class Content(BaseModel):
     title: str
     description: str
-    type: ContentType
-    genres: List[str]
-    release_date: datetime
-    rating: ContentRating
-    duration: Optional[int]  # for movies
-    seasons: Optional[List[Season]]  # for series
-    thumbnail_url: HttpUrl
-    trailer_url: HttpUrl
-    video_url: Optional[HttpUrl]
-    cast: List[str]
-    director: str
-    languages: List[str]
-    subtitles: List[str]
-    tags: List[str]
-    popularity_score: float = 0.0
-    average_rating: float = 0.0
-    total_ratings: int = 0
+    type: str  # "movie" or "series"
+    genre: List[str]
+    release_year: int
+    duration: str
+    thumbnail_url: str
+    video_url: str
     created_at: datetime = datetime.utcnow()
     updated_at: datetime = datetime.utcnow() 

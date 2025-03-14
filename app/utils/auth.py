@@ -1,30 +1,23 @@
-from datetime import datetime, timedelta
+from fastapi import HTTPException, Depends
+from fastapi.security import HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
-from fastapi import HTTPException, Security
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from ..config import get_settings
+from datetime import datetime, timedelta
+from ..config import settings
 
-settings = get_settings()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+def create_token(user_id: str) -> str:
+    expires = datetime.utcnow() + timedelta(days=1)
+    data = {"user_id": user_id, "exp": expires}
+    return jwt.encode(data, settings.JWT_SECRET, algorithm="HS256")
 
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
-
-def create_access_token(data: dict) -> str:
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(seconds=settings.jwt_expiration)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Security(security)):
+async def get_current_user(credentials = Depends(security)):
     try:
-        token = credentials.credentials
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        return payload
+        payload = jwt.decode(
+            credentials.credentials, 
+            settings.JWT_SECRET, 
+            algorithms=["HS256"]
+        )
+        return payload["user_id"]
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid authentication credentials") 
+        raise HTTPException(status_code=401, detail="Invalid token") 
