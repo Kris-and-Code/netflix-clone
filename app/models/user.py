@@ -1,10 +1,22 @@
-from pydantic import BaseModel, EmailStr
-from typing import List
+from pydantic import BaseModel, EmailStr, Field
+from typing import List, Optional
 from datetime import datetime
 
-class User(BaseModel):
+class UserBase(BaseModel):
+    email: EmailStr
+    profile_name: str = Field(..., min_length=2, max_length=50)
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=6)
+
+class UserLogin(BaseModel):
     email: EmailStr
     password: str
-    profile_name: str
+
+class UserResponse(UserBase):
+    id: str
     my_list: List[str] = []
-    created_at: datetime = datetime.utcnow() 
+    created_at: datetime
+
+    class Config:
+        from_attributes = True 

@@ -1,40 +1,58 @@
-from fastapi import APIRouter, HTTPException
-from ..models.user import User
-from ..utils.auth import create_token
+from fastapi import APIRouter, HTTPException, status
+from ..models.user import UserCreate, UserLogin, UserResponse
+from ..utils.auth import create_access_token
 from motor.motor_asyncio import AsyncIOMotorClient
 from ..config import settings
 import bcrypt
+from bson import ObjectId
 
 router = APIRouter()
-client = AsyncIOMotorClient(settings.MONGODB_URL)
-db = client.netflix
+db = AsyncIOMotorClient(settings.MONGODB_URL).netflix
 
-@router.post("/register")
-async def register(user: User):
+@router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
+async def register(user: UserCreate):
     # Check if user exists
-    if await db.users.find_one({"email": user.email}):
-        raise HTTPException(400, "Email already registered")
+    if await db.users.find_one({"email": user.email.lower()}):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
     
-    # Hash password
-    hashed = bcrypt.hashpw(user.password.encode(), bcrypt.gensalt())
-    user.password = hashed.decode()
+    # Create user document
+    user_dict = user.model_dump()
+    user_dict["email"] = user_dict["email"].lower()
+    user_dict["password"] = bcrypt.hashpw(
+        user.password.encode(),
+        bcrypt.gensalt()
+    ).decode()
     
-    # Save user
-    result = await db.users.insert_one(user.dict())
-    
-    # Create token
-    token = create_token(str(result.inserted_id))
-    
-    return {"token": token}
+    try:
+        result = await db.users.insert_one(user_dict)
+        token = create_access_token(str(result.inserted_id))
+        return {
+            "token": token,
+            "message": "Registration successful"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not register user"
+        )
 
-@router.post("/login")
-async def login(email: str, password: str):
-    user = await db.users.find_one({"email": email})
+@router.post("/login", response_model=dict)
+async def login(user_data: UserLogin):
+    user = await db.users.find_one({"email": user_data.email.lower()})
     if not user or not bcrypt.checkpw(
-        password.encode(), 
+        user_data.password.encode(),
         user["password"].encode()
     ):
-        raise HTTPException(401, "Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
     
-    token = create_token(str(user["_id"]))
-    return {"token": token} 
+    token = create_access_token(str(user["_id"]))
+    return {
+        "token": token,
+        "message": "Login successful"
+    } 
