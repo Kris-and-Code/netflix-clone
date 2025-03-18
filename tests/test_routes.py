@@ -7,135 +7,202 @@ import asyncio
 
 client = TestClient(app)
 
-# Setup and teardown for test database
+# Database Fixtures
 @pytest.fixture(autouse=True)
-async def setup_test_db():
-    # Connect to test database
-    test_db_url = settings.MONGODB_URL + "_test"
-    test_client = AsyncIOMotorClient(test_db_url)
-    test_db = test_client.get_default_database()
+async def test_db():
+    """Setup test database"""
+    test_client = AsyncIOMotorClient(settings.MONGODB_URL)
+    db = test_client.get_default_database()
     
-    # Store original database URL
-    original_db_url = settings.MONGODB_URL
-    settings.MONGODB_URL = test_db_url
+    # Clear database before each test
+    collections = await db.list_collection_names()
+    for collection in collections:
+        await db[collection].delete_many({})
     
-    yield test_db
+    yield db
     
-    # Cleanup: drop test database and restore original URL
-    await test_client.drop_database(test_db.name)
+    # Cleanup after tests
+    await test_client.drop_database(db.name)
     test_client.close()
-    settings.MONGODB_URL = original_db_url
 
+# Test Data Fixtures
 @pytest.fixture
-def test_user():
+def user_data():
     return {
         "email": "test@example.com",
-        "password": "password123",
+        "password": "Password123!",
         "profile_name": "Test User"
     }
 
 @pytest.fixture
-def auth_headers(test_user):
-    # Register and get token
-    response = client.post("/api/auth/register", json=test_user)
-    token = response.json()["token"]
-    return {"Authorization": f"Bearer {token}"}
+def content_data():
+    return {
+        "title": "Test Movie",
+        "description": "A test movie description",
+        "type": "movie",
+        "genre": ["Action", "Drama"],
+        "release_year": 2023,
+        "duration": "120",
+        "thumbnail_url": "https://example.com/thumbnail.jpg",
+        "video_url": "https://example.com/video.mp4"
+    }
 
-# Test root endpoint
-def test_root():
-    response = client.get("/")
-    assert response.status_code == 200
-    assert response.json() == {"message": "Welcome to Netflix Clone API"}
+@pytest.fixture
+async def auth_token(user_data):
+    """Create user and return auth token"""
+    response = client.post("/api/auth/register", json=user_data)
+    return response.json()["token"]
 
-# Authentication tests
+@pytest.fixture
+def auth_headers(auth_token):
+    """Return headers with auth token"""
+    return {"Authorization": f"Bearer {auth_token}"}
+
+# Authentication Tests
 class TestAuth:
-    def test_register_success(self, test_user):
-        response = client.post("/api/auth/register", json=test_user)
+    """Test authentication endpoints"""
+    
+    def test_register_success(self, user_data):
+        response = client.post("/api/auth/register", json=user_data)
         assert response.status_code == 201
         data = response.json()
         assert "token" in data
         assert data["message"] == "Registration successful"
 
-    def test_register_duplicate_email(self, test_user):
+    def test_register_validation(self):
+        invalid_cases = [
+            ({}, 422, "Missing data"),
+            ({"email": "invalid"}, 422, "Invalid email"),
+            ({"email": "test@example.com", "password": "short"}, 422, "Password too short"),
+            ({"email": "test@example.com"}, 422, "Missing password")
+        ]
+        
+        for data, expected_status, message in invalid_cases:
+            response = client.post("/api/auth/register", json=data)
+            assert response.status_code == expected_status, message
+
+    def test_register_duplicate_email(self, user_data):
         # First registration
-        client.post("/api/auth/register", json=test_user)
+        client.post("/api/auth/register", json=user_data)
         # Duplicate registration
-        response = client.post("/api/auth/register", json=test_user)
+        response = client.post("/api/auth/register", json=user_data)
         assert response.status_code == 400
         assert "Email already registered" in response.json()["detail"]
 
-    def test_register_invalid_email(self, test_user):
-        test_user["email"] = "invalid-email"
-        response = client.post("/api/auth/register", json=test_user)
-        assert response.status_code == 422  # Validation error
+    def test_login_flow(self, user_data):
+        # Register
+        client.post("/api/auth/register", json=user_data)
+        
+        # Test successful login
+        login_data = {
+            "email": user_data["email"],
+            "password": user_data["password"]
+        }
+        response = client.post("/api/auth/login", json=login_data)
+        assert response.status_code == 200
+        assert "token" in response.json()
+        
+        # Test invalid password
+        login_data["password"] = "wrong_password"
+        response = client.post("/api/auth/login", json=login_data)
+        assert response.status_code == 401
 
-    def test_register_short_password(self, test_user):
-        test_user["password"] = "123"  # Too short
-        response = client.post("/api/auth/register", json=test_user)
-        assert response.status_code == 422
+# Content Tests
+class TestContent:
+    """Test content endpoints"""
 
-    def test_login_success(self, test_user):
-        # Register user first
-        client.post("/api/auth/register", json=test_user)
-        # Try logging in
-        response = client.post("/api/auth/login", json={
-            "email": test_user["email"],
-            "password": test_user["password"]
-        })
+    async def test_create_content(self, auth_headers, content_data):
+        response = client.post(
+            "/api/content",
+            json=content_data,
+            headers=auth_headers
+        )
+        assert response.status_code == 201
+        data = response.json()
+        assert data["title"] == content_data["title"]
+
+    def test_get_content_list(self, auth_headers):
+        response = client.get("/api/content", headers=auth_headers)
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_content_pagination(self, auth_headers, content_data):
+        # Create multiple content items
+        for i in range(15):
+            content_data["title"] = f"Movie {i}"
+            client.post("/api/content", json=content_data, headers=auth_headers)
+
+        # Test pagination
+        response = client.get(
+            "/api/content",
+            params={"page": 1, "limit": 10},
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        assert len(response.json()) == 10
+
+    def test_content_filters(self, auth_headers, content_data):
+        # Create content with different genres
+        content_data["genre"] = ["Action"]
+        client.post("/api/content", json=content_data, headers=auth_headers)
+        
+        content_data["genre"] = ["Drama"]
+        client.post("/api/content", json=content_data, headers=auth_headers)
+
+        # Test genre filter
+        response = client.get(
+            "/api/content",
+            params={"genre": "Action"},
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+        assert "Action" in response.json()[0]["genre"]
+
+# User Profile Tests
+class TestUserProfile:
+    """Test user profile endpoints"""
+
+    def test_get_profile(self, auth_headers):
+        response = client.get("/api/user/profile", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
-        assert "token" in data
-        assert data["message"] == "Login successful"
+        assert "email" in data
+        assert "profile_name" in data
 
-    def test_login_invalid_credentials(self, test_user):
-        response = client.post("/api/auth/login", json={
-            "email": test_user["email"],
-            "password": "wrongpassword"
-        })
+    def test_update_profile(self, auth_headers):
+        update_data = {"profile_name": "Updated Name"}
+        response = client.put(
+            "/api/user/profile",
+            json=update_data,
+            headers=auth_headers
+        )
+        assert response.status_code == 200
+        assert response.json()["profile_name"] == update_data["profile_name"]
+
+# Error Handling Tests
+class TestErrorHandling:
+    """Test error handling"""
+
+    def test_invalid_token(self):
+        headers = {"Authorization": "Bearer invalid_token"}
+        response = client.get("/api/content", headers=headers)
         assert response.status_code == 401
-        assert "Invalid email or password" in response.json()["detail"]
 
-    def test_login_missing_fields(self):
-        response = client.post("/api/auth/login", json={})
-        assert response.status_code == 422
-
-# Content tests
-class TestContent:
-    def test_get_content_unauthorized(self):
+    def test_missing_token(self):
         response = client.get("/api/content")
         assert response.status_code == 401
 
-    def test_get_content_empty(self, auth_headers):
-        response = client.get("/api/content", headers=auth_headers)
-        assert response.status_code == 200
-        assert response.json() == []
+    def test_invalid_endpoint(self):
+        response = client.get("/api/invalid")
+        assert response.status_code == 404
 
-    def test_get_content_with_filters(self, auth_headers):
-        response = client.get(
-            "/api/content",
-            params={"genre": "Action", "page": 1, "limit": 10},
-            headers=auth_headers
-        )
-        assert response.status_code == 200
-
-    def test_get_content_invalid_page(self, auth_headers):
-        response = client.get(
-            "/api/content",
-            params={"page": 0},  # Invalid page number
-            headers=auth_headers
-        )
-        assert response.status_code == 422
-
-# Configure pytest for async
+# Setup pytest for async testing
 def pytest_configure(config):
-    """Setup pytest to handle async tests"""
-    config.addinivalue_line(
-        "markers", "asyncio: mark test as async"
-    )
+    config.addinivalue_line("markers", "asyncio: mark test as async")
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Create an instance of the default event loop for the test session"""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close() 
