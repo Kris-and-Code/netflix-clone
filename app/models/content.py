@@ -32,7 +32,7 @@ class Season(BaseModel):
     episodes: List[Episode]
     release_date: datetime
 
-class Content(BaseModel):
+class ContentBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=10)
     type: ContentType
@@ -42,5 +42,34 @@ class Content(BaseModel):
     thumbnail_url: HttpUrl
     video_url: HttpUrl
     rating: Optional[float] = Field(None, ge=0, le=10)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = datetime.utcnow() 
+
+class ContentCreate(ContentBase):
+    pass
+
+class ContentUpdate(BaseModel):
+    title: Optional[str] = Field(None, min_length=1, max_length=200)
+    description: Optional[str] = Field(None, min_length=10)
+    type: Optional[ContentType] = None
+    genre: Optional[List[str]] = Field(None, min_items=1)
+    release_year: Optional[int] = Field(None, le=datetime.now().year)
+    duration: Optional[str] = None
+    thumbnail_url: Optional[HttpUrl] = None
+    video_url: Optional[HttpUrl] = None
+    rating: Optional[float] = Field(None, ge=0, le=10)
+
+class ContentResponse(ContentBase):
+    id: str = Field(..., alias="_id")
+    created_at: datetime
+    updated_at: datetime
+    created_by: str
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+class PaginatedContent(BaseModel):
+    items: List[ContentResponse]
+    total: int
+    page: int
+    size: int
+    pages: int 
