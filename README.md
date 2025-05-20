@@ -38,8 +38,8 @@ A robust backend API service that replicates core Netflix functionalities, built
 
 1. Clone the repository
 ```bash
-git clone https://github.com/Kris-and-Code/netflix-clone-backend.git
-cd netflix-clone-backend
+git clone https://github.com/Kris-and-Code/netflix-clone.git
+cd netflix-clone
 ```
 
 2. Install dependencies
