@@ -1,6 +1,7 @@
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 from datetime import datetime
+from bson import ObjectId
 import re
 
 class UserBase(BaseModel):
