@@ -1,23 +1,11 @@
-from typing import List, Optional
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum as SQLEnum
+from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 from enum import Enum
-from bson import ObjectId
-
-class PyObjectId(ObjectId):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v):
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid ObjectId")
-        return ObjectId(v)
-
-    @classmethod
-    def __modify_schema__(cls, field_schema):
-        field_schema.update(type="string")
+from typing import List, Optional
+from ..database import Base
 
 class ContentType(str, Enum):
     MOVIE = "movie"
@@ -31,7 +19,55 @@ class ContentRating(str, Enum):
     R = "R"
     NC17 = "NC-17"
 
-class Episode(BaseModel):
+# SQLAlchemy Models
+class Episode(Base):
+    __tablename__ = "episodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(String, nullable=False)
+    duration = Column(Integer, nullable=False)  # in seconds
+    episode_number = Column(Integer, nullable=False)
+    season_number = Column(Integer, nullable=False)
+    thumbnail_url = Column(String, nullable=False)
+    video_url = Column(String, nullable=False)
+    release_date = Column(DateTime(timezone=True), nullable=False)
+    season_id = Column(Integer, ForeignKey("seasons.id"))
+    season = relationship("Season", back_populates="episodes")
+
+class Season(Base):
+    __tablename__ = "seasons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    season_number = Column(Integer, nullable=False)
+    title = Column(String(200), nullable=False)
+    description = Column(String, nullable=False)
+    release_date = Column(DateTime(timezone=True), nullable=False)
+    content_id = Column(Integer, ForeignKey("contents.id"))
+    content = relationship("Content", back_populates="seasons")
+    episodes = relationship("Episode", back_populates="season")
+
+class Content(Base):
+    __tablename__ = "contents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(String, nullable=False)
+    type = Column(SQLEnum(ContentType), nullable=False)
+    genre = Column(JSON, nullable=False)
+    release_year = Column(Integer, nullable=False)
+    duration = Column(String, nullable=False)
+    thumbnail_url = Column(String, nullable=False)
+    video_url = Column(String, nullable=False)
+    rating = Column(Float, nullable=True)
+    content_rating = Column(SQLEnum(ContentRating), default=ContentRating.PG13)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_by = Column(Integer, ForeignKey("users.id"))
+    seasons = relationship("Season", back_populates="content")
+
+# Pydantic Models
+class EpisodeBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=10)
     duration: int = Field(..., gt=0)  # in seconds
@@ -41,11 +77,11 @@ class Episode(BaseModel):
     video_url: HttpUrl
     release_date: datetime
 
-class Season(BaseModel):
+class SeasonBase(BaseModel):
     season_number: int = Field(..., gt=0)
     title: str = Field(..., min_length=1, max_length=200)
     description: str = Field(..., min_length=10)
-    episodes: List[Episode]
+    episodes: List[EpisodeBase]
     release_date: datetime
 
 class ContentBase(BaseModel):
@@ -76,18 +112,13 @@ class ContentUpdate(BaseModel):
     content_rating: Optional[ContentRating] = None
 
 class ContentResponse(ContentBase):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    id: int
     created_at: datetime
-    updated_at: datetime
-    created_by: PyObjectId
+    updated_at: Optional[datetime]
+    created_by: int
 
     class Config:
-        allow_population_by_field_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {
-            ObjectId: str,
-            datetime: lambda v: v.isoformat()
-        }
+        from_attributes = True
 
 class PaginatedContent(BaseModel):
     items: List[ContentResponse]
