@@ -1,6 +1,8 @@
 fastapi
 uvicorn
-motor
+sqlalchemy
+psycopg2-binary
+alembic
 pydantic[email]
 pydantic-settings
 python-jose[cryptography]
@@ -9,4 +11,5 @@ python-dotenv
 bcrypt
 pytest
 pytest-asyncio
-httpx 
+httpx
+redis 

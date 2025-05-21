@@ -1,9 +1,30 @@
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON
+from sqlalchemy.sql import func
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from bson import ObjectId
 import re
+from ..database import Base
 
+# SQLAlchemy User Model
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password = Column(String, nullable=False)
+    profile_name = Column(String(50), nullable=False)
+    preferences = Column(JSON, default={
+        "language": "en",
+        "maturity_level": "adult",
+        "notifications_enabled": True
+    })
+    my_list = Column(JSON, default=list)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_login = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, default=True)
+
+# Pydantic Models
 class UserBase(BaseModel):
     email: EmailStr
     profile_name: str = Field(..., min_length=2, max_length=50)
@@ -51,15 +72,11 @@ class UserUpdate(BaseModel):
         return v
 
 class UserResponse(UserBase):
-    id: str
+    id: int
     my_list: List[str] = Field(default_factory=list)
     created_at: datetime
     last_login: Optional[datetime] = None
     is_active: bool = True
 
     class Config:
-        from_attributes = True
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            ObjectId: lambda v: str(v)
-        } 
+        from_attributes = True 
