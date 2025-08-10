@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=D:\Git pull\Netflix-clone\netflix-clone\netflix-env
+set VIRTUAL_ENV=D:\Github Projects_2025\Github Pull\netflix-clone\netflix-env
 
 if not defined PROMPT set PROMPT=$P$G
 

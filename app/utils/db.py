@@ -1,5 +1,5 @@
-from motor.motor_asyncio import AsyncIOMotorClient
-from ..config import get_settings
+from sqlalchemy import create_engine
+from ..config.settings import get_settings
 
 settings = get_settings()
 

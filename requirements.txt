@@ -1,10 +1,6 @@
-fastapi
+fastapi==0.104.1
 uvicorn
-sqlalchemy
-psycopg2-binary
-alembic
-pydantic[email]
-pydantic-settings
+pydantic==1.10.13
 python-jose[cryptography]
 python-multipart
 python-dotenv
@@ -12,4 +8,6 @@ bcrypt
 pytest
 pytest-asyncio
 httpx
-redis 
+redis
+firebase-admin
+google-auth 

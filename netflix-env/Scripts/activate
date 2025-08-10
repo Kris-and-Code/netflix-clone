@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="D:\Git pull\Netflix-clone\netflix-clone\netflix-env"
+VIRTUAL_ENV="D:\Github Projects_2025\Github Pull\netflix-clone\netflix-env"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

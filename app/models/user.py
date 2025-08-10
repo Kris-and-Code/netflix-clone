@@ -1,28 +1,7 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, JSON
-from sqlalchemy.sql import func
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import re
-from ..database import Base
-
-# SQLAlchemy User Model
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    email = Column(String, unique=True, index=True, nullable=False)
-    password = Column(String, nullable=False)
-    profile_name = Column(String(50), nullable=False)
-    preferences = Column(JSON, default={
-        "language": "en",
-        "maturity_level": "adult",
-        "notifications_enabled": True
-    })
-    my_list = Column(JSON, default=list)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_login = Column(DateTime(timezone=True), nullable=True)
-    is_active = Column(Boolean, default=True)
 
 # Pydantic Models
 class UserBase(BaseModel):
@@ -72,11 +51,8 @@ class UserUpdate(BaseModel):
         return v
 
 class UserResponse(UserBase):
-    id: int
+    id: str  # Changed from int to str for Firebase
     my_list: List[str] = Field(default_factory=list)
-    created_at: datetime
-    last_login: Optional[datetime] = None
-    is_active: bool = True
-
-    class Config:
-        from_attributes = True 
+    created_at: str  # Changed from datetime to str for Firebase
+    last_login: Optional[str] = None  # Changed from datetime to str for Firebase
+    is_active: bool = True 

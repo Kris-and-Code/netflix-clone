@@ -1,11 +1,7 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, JSON, Enum as SQLEnum
-from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
 from pydantic import BaseModel, HttpUrl, Field
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
-from ..database import Base
 
 class ContentType(str, Enum):
     MOVIE = "movie"
@@ -18,53 +14,6 @@ class ContentRating(str, Enum):
     PG13 = "PG-13"
     R = "R"
     NC17 = "NC-17"
-
-# SQLAlchemy Models
-class Episode(Base):
-    __tablename__ = "episodes"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(200), nullable=False)
-    description = Column(String, nullable=False)
-    duration = Column(Integer, nullable=False)  # in seconds
-    episode_number = Column(Integer, nullable=False)
-    season_number = Column(Integer, nullable=False)
-    thumbnail_url = Column(String, nullable=False)
-    video_url = Column(String, nullable=False)
-    release_date = Column(DateTime(timezone=True), nullable=False)
-    season_id = Column(Integer, ForeignKey("seasons.id"))
-    season = relationship("Season", back_populates="episodes")
-
-class Season(Base):
-    __tablename__ = "seasons"
-
-    id = Column(Integer, primary_key=True, index=True)
-    season_number = Column(Integer, nullable=False)
-    title = Column(String(200), nullable=False)
-    description = Column(String, nullable=False)
-    release_date = Column(DateTime(timezone=True), nullable=False)
-    content_id = Column(Integer, ForeignKey("contents.id"))
-    content = relationship("Content", back_populates="seasons")
-    episodes = relationship("Episode", back_populates="season")
-
-class Content(Base):
-    __tablename__ = "contents"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(200), nullable=False)
-    description = Column(String, nullable=False)
-    type = Column(SQLEnum(ContentType), nullable=False)
-    genre = Column(JSON, nullable=False)
-    release_year = Column(Integer, nullable=False)
-    duration = Column(String, nullable=False)
-    thumbnail_url = Column(String, nullable=False)
-    video_url = Column(String, nullable=False)
-    rating = Column(Float, nullable=True)
-    content_rating = Column(SQLEnum(ContentRating), default=ContentRating.PG13)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    created_by = Column(Integer, ForeignKey("users.id"))
-    seasons = relationship("Season", back_populates="content")
 
 # Pydantic Models
 class EpisodeBase(BaseModel):
@@ -112,13 +61,10 @@ class ContentUpdate(BaseModel):
     content_rating: Optional[ContentRating] = None
 
 class ContentResponse(ContentBase):
-    id: int
-    created_at: datetime
-    updated_at: Optional[datetime]
-    created_by: int
-
-    class Config:
-        from_attributes = True
+    id: str  # Changed from int to str for Firebase
+    created_at: str  # Changed from datetime to str for Firebase
+    updated_at: Optional[str] = None  # Changed from datetime to str for Firebase
+    created_by: Optional[str] = None  # Changed from int to str for Firebase
 
 class PaginatedContent(BaseModel):
     items: List[ContentResponse]

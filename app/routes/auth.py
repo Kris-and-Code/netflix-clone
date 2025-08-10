@@ -9,10 +9,9 @@ from ..utils.auth import (
     check_rate_limit
 )
 from ..schemas.responses import DataResponse, ErrorResponse
-from motor.motor_asyncio import AsyncIOMotorClient
-from ..config import settings
+from ..utils.firebase import FirebaseDB
+from ..config.settings import get_settings
 import bcrypt
-from bson import ObjectId
 from datetime import datetime
 import logging
 from typing import Dict, Any, Optional
@@ -20,8 +19,10 @@ import re
 
 router = APIRouter()
 security = HTTPBearer()
-db = AsyncIOMotorClient(settings.MONGODB_URL).netflix
 logger = logging.getLogger(__name__)
+
+# Get settings
+settings = get_settings()
 
 @router.post(
     "/register",
@@ -53,7 +54,8 @@ async def register(request: Request, user: UserCreate):
             )
         
         # Check if user exists
-        if await db.users.find_one({"email": user.email.lower()}):
+        existing_user = await FirebaseDB.get_user_by_email(user.email)
+        if existing_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email already registered"
@@ -72,18 +74,14 @@ async def register(request: Request, user: UserCreate):
         user_dict["failed_login_attempts"] = 0
         user_dict["last_failed_login"] = None
         
-        result = await db.users.insert_one(user_dict)
-        user_id = str(result.inserted_id)
+        user_id = await FirebaseDB.create_user(user_dict)
         
         # Create tokens
         access_token = create_access_token(user_id)
         refresh_token = create_refresh_token(user_id)
         
         # Update user with refresh token
-        await db.users.update_one(
-            {"_id": result.inserted_id},
-            {"$set": {"refresh_token": refresh_token}}
-        )
+        await FirebaseDB.update_user(user_id, {"refresh_token": refresh_token})
         
         return DataResponse(
             success=True,
@@ -105,7 +103,7 @@ async def register(request: Request, user: UserCreate):
         logger.error(f"Registration error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not register user"
+            detail="Internal server error"
         )
 
 @router.post(
@@ -120,91 +118,78 @@ async def register(request: Request, user: UserCreate):
 )
 async def login(request: Request, user_data: UserLogin):
     """
-    Authenticate user and return tokens.
+    Authenticate user and return access token.
     
     Args:
         request: FastAPI request object
         user_data: UserLogin model containing email and password
         
     Returns:
-        DataResponse containing access token, refresh token and user information
+        DataResponse containing access token, refresh token, and user information
     """
     try:
-        # Check rate limit for login attempts
-        if not await check_rate_limit(request, "login", 10, 300):  # 10 attempts per 5 minutes
+        # Check rate limit for login
+        if not await check_rate_limit(request, "login", 10, 300):  # 10 login attempts per 5 minutes
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Too many login attempts"
             )
         
-        user = await db.users.find_one({"email": user_data.email.lower()})
-        
+        # Get user from database
+        user = await FirebaseDB.get_user_by_email(user_data.email)
         if not user:
-            # Increment failed login attempts for non-existent user
-            await db.users.update_one(
-                {"email": user_data.email.lower()},
-                {
-                    "$inc": {"failed_login_attempts": 1},
-                    "$set": {"last_failed_login": datetime.utcnow()}
-                },
-                upsert=True
-            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="Invalid credentials"
             )
         
+        # Check if account is active
         if not user.get("is_active", True):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Account is deactivated"
             )
         
-        if not bcrypt.checkpw(
-            user_data.password.encode(),
-            user["password"].encode()
-        ):
-            # Increment failed login attempts
-            await db.users.update_one(
-                {"_id": user["_id"]},
-                {
-                    "$inc": {"failed_login_attempts": 1},
-                    "$set": {"last_failed_login": datetime.utcnow()}
-                }
-            )
+        # Verify password
+        if not bcrypt.checkpw(user_data.password.encode(), user["password"].encode()):
+            # Update failed login attempts
+            failed_attempts = user.get("failed_login_attempts", 0) + 1
+            last_failed_login = datetime.utcnow()
             
-            # Check if account should be locked
-            if user.get("failed_login_attempts", 0) >= 5:
-                await db.users.update_one(
-                    {"_id": user["_id"]},
-                    {"$set": {"is_active": False}}
-                )
+            await FirebaseDB.update_user(user["id"], {
+                "failed_login_attempts": failed_attempts,
+                "last_failed_login": last_failed_login
+            })
+            
+            # Lock account after 5 failed attempts
+            if failed_attempts >= 5:
+                await FirebaseDB.update_user(user["id"], {"is_active": False})
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Account locked due to too many failed attempts"
+                    detail="Account locked due to multiple failed login attempts"
                 )
             
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password"
+                detail="Invalid credentials"
             )
         
         # Reset failed login attempts on successful login
-        user_id = str(user["_id"])
-        access_token = create_access_token(user_id)
-        refresh_token = create_refresh_token(user_id)
+        if user.get("failed_login_attempts", 0) > 0:
+            await FirebaseDB.update_user(user["id"], {
+                "failed_login_attempts": 0,
+                "last_failed_login": None
+            })
         
-        await db.users.update_one(
-            {"_id": user["_id"]},
-            {
-                "$set": {
-                    "refresh_token": refresh_token,
-                    "last_login": datetime.utcnow(),
-                    "failed_login_attempts": 0,
-                    "last_failed_login": None
-                }
-            }
-        )
+        # Update last login
+        await FirebaseDB.update_user(user["id"], {"last_login": datetime.utcnow()})
+        
+        # Create new tokens
+        access_token = create_access_token(user["id"])
+        refresh_token = create_refresh_token(user["id"])
+        
+        # Update refresh token in database
+        await FirebaseDB.update_user(user["id"], {"refresh_token": refresh_token})
         
         return DataResponse(
             success=True,
@@ -213,10 +198,11 @@ async def login(request: Request, user_data: UserLogin):
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "user": {
-                    "id": user_id,
+                    "id": user["id"],
                     "email": user["email"],
                     "profile_name": user["profile_name"],
-                    "preferences": user.get("preferences", {})
+                    "preferences": user.get("preferences", {}),
+                    "my_list": user.get("my_list", [])
                 }
             }
         )
@@ -226,7 +212,7 @@ async def login(request: Request, user_data: UserLogin):
         logger.error(f"Login error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not authenticate user"
+            detail="Internal server error"
         )
 
 @router.post(
@@ -242,44 +228,41 @@ async def refresh_token(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ):
     """
-    Generate new access token using refresh token.
+    Refresh access token using refresh token.
     
     Args:
         request: FastAPI request object
-        credentials: HTTP Authorization credentials containing refresh token
+        credentials: HTTP authorization credentials containing refresh token
         
     Returns:
-        DataResponse containing new access token
+        DataResponse containing new access token and refresh token
     """
     try:
-        # Check rate limit for token refresh
-        if not await check_rate_limit(request, "refresh", 20, 300):  # 20 refreshes per 5 minutes
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many token refresh attempts"
-            )
-        
         refresh_token = credentials.credentials
         user_id = verify_refresh_token(refresh_token)
         
-        user = await db.users.find_one({
-            "_id": ObjectId(user_id),
-            "refresh_token": refresh_token,
-            "is_active": True
-        })
-        
-        if not user:
+        # Verify refresh token exists in database
+        user = await FirebaseDB.get_user_by_id(user_id)
+        if not user or user.get("refresh_token") != refresh_token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid refresh token"
             )
         
+        # Create new tokens
         new_access_token = create_access_token(user_id)
+        new_refresh_token = create_refresh_token(user_id)
+        
+        # Update refresh token in database
+        await FirebaseDB.update_user(user_id, {"refresh_token": new_refresh_token})
         
         return DataResponse(
             success=True,
             message="Token refreshed successfully",
-            data={"access_token": new_access_token}
+            data={
+                "access_token": new_access_token,
+                "refresh_token": new_refresh_token
+            }
         )
     except HTTPException:
         raise
@@ -287,5 +270,43 @@ async def refresh_token(
         logger.error(f"Token refresh error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Could not refresh token"
+            detail="Internal server error"
+        )
+
+@router.post(
+    "/logout",
+    response_model=DataResponse[Dict[str, Any]],
+    responses={
+        200: {"model": DataResponse, "description": "Logout successful"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error"}
+    }
+)
+async def logout(
+    request: Request,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """
+    Logout user by invalidating refresh token.
+    
+    Args:
+        request: FastAPI request object
+        current_user: Current authenticated user
+        
+    Returns:
+        DataResponse confirming logout
+    """
+    try:
+        # Invalidate refresh token
+        await FirebaseDB.update_user(current_user.id, {"refresh_token": None})
+        
+        return DataResponse(
+            success=True,
+            message="Logout successful",
+            data={}
+        )
+    except Exception as e:
+        logger.error(f"Logout error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         ) 

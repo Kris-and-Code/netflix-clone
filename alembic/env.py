@@ -2,7 +2,7 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
-from app.config import settings
+from app.config.settings import get_settings
 from app.database import Base
 from app.models import user, content
 
@@ -12,6 +12,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+# Get settings
+settings = get_settings()
 
 def get_url():
     return settings.DATABASE_URL

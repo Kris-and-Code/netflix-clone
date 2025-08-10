@@ -1,12 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 from motor.motor_asyncio import AsyncIOMotorClient
+from app.config.settings import get_settings
 from app.main import app
-from app.config import settings
-from app.utils.auth import create_access_token
-import pytest
-import asyncio
-from typing import Dict, Any
-from datetime import datetime
+
+settings = get_settings()
 
 client = TestClient(app)
 

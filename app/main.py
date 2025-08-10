@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .routes import auth, content, user
-from .config import settings
+from .config.settings import get_settings
 
-app = FastAPI(title=settings.APP_NAME)
+settings = get_settings()
+app = FastAPI(title=settings.PROJECT_NAME)
 
 # CORS middleware
 app.add_middleware(
