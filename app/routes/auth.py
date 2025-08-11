@@ -12,7 +12,7 @@ from ..schemas.responses import DataResponse, ErrorResponse
 from ..utils.firebase import FirebaseDB
 from ..config.settings import get_settings
 import bcrypt
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from typing import Dict, Any, Optional
 import re
@@ -62,13 +62,13 @@ async def register(request: Request, user: UserCreate):
             )
         
         # Create user document
-        user_dict = user.model_dump()
+        user_dict = user.dict()
         user_dict["email"] = user_dict["email"].lower()
         user_dict["password"] = bcrypt.hashpw(
             user.password.encode(),
             bcrypt.gensalt()
         ).decode()
-        user_dict["created_at"] = datetime.utcnow()
+        user_dict["created_at"] = datetime.now(timezone.utc)
         user_dict["is_active"] = True
         user_dict["last_login"] = None
         user_dict["failed_login_attempts"] = 0
@@ -154,7 +154,7 @@ async def login(request: Request, user_data: UserLogin):
         if not bcrypt.checkpw(user_data.password.encode(), user["password"].encode()):
             # Update failed login attempts
             failed_attempts = user.get("failed_login_attempts", 0) + 1
-            last_failed_login = datetime.utcnow()
+            last_failed_login = datetime.now(timezone.utc)
             
             await FirebaseDB.update_user(user["id"], {
                 "failed_login_attempts": failed_attempts,
@@ -182,7 +182,7 @@ async def login(request: Request, user_data: UserLogin):
             })
         
         # Update last login
-        await FirebaseDB.update_user(user["id"], {"last_login": datetime.utcnow()})
+        await FirebaseDB.update_user(user["id"], {"last_login": datetime.now(timezone.utc)})
         
         # Create new tokens
         access_token = create_access_token(user["id"])

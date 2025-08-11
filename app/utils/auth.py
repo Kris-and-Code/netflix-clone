@@ -1,7 +1,7 @@
 from fastapi import HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from ..config.settings import get_settings
 from ..models.user import UserResponse
 from ..utils.firebase import FirebaseAuth
@@ -79,12 +79,12 @@ def create_access_token(user_id: str) -> str:
     Returns:
         JWT access token
     """
-    expire = datetime.utcnow() + timedelta(minutes=15)  # Short-lived access token
+    expire = datetime.now(timezone.utc) + timedelta(minutes=15)  # Short-lived access token
     data = {
         "user_id": user_id,
         "token_type": "access",
         "exp": expire,
-        "iat": datetime.utcnow()  # Issued at time
+        "iat": datetime.now(timezone.utc)  # Issued at time
     }
     return jwt.encode(data, settings.SECRET_KEY, algorithm="HS256")
 
@@ -98,12 +98,12 @@ def create_refresh_token(user_id: str) -> str:
     Returns:
         JWT refresh token
     """
-    expire = datetime.utcnow() + timedelta(days=30)  # Long-lived refresh token
+    expire = datetime.now(timezone.utc) + timedelta(days=30)  # Long-lived refresh token
     data = {
         "user_id": user_id,
         "token_type": "refresh",
         "exp": expire,
-        "iat": datetime.utcnow()
+        "iat": datetime.now(timezone.utc)
     }
     return jwt.encode(data, settings.SECRET_KEY, algorithm="HS256")
 
@@ -199,7 +199,7 @@ async def get_current_user(
             profile_name="User",
             preferences={},
             my_list=[],
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             is_active=True
         )
     except HTTPException:
@@ -221,7 +221,7 @@ async def get_current_user(
                 profile_name=decoded_token.get("name", "User"),
                 preferences={},
                 my_list=[],
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(timezone.utc),
                 is_active=True
             )
         except Exception as e:

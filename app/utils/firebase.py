@@ -3,7 +3,7 @@ from firebase_admin import credentials, db, auth
 import os
 import logging
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from dotenv import load_dotenv
 
@@ -96,8 +96,8 @@ class FirebaseDB:
             
             # Add metadata
             user_data['id'] = user_id
-            user_data['created_at'] = datetime.utcnow().isoformat()
-            user_data['updated_at'] = datetime.utcnow().isoformat()
+            user_data['created_at'] = datetime.now(timezone.utc).isoformat()
+            user_data['updated_at'] = datetime.now(timezone.utc).isoformat()
             
             # Store user data
             db_ref.child('users').child(user_id).set(user_data)
@@ -150,7 +150,7 @@ class FirebaseDB:
         FirebaseDB._check_initialization()
         
         try:
-            update_data['updated_at'] = datetime.utcnow().isoformat()
+            update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
             db_ref.child('users').child(user_id).update(update_data)
             return True
         except Exception as e:
@@ -169,8 +169,8 @@ class FirebaseDB:
             
             # Add metadata
             content_data['id'] = content_id
-            content_data['created_at'] = datetime.utcnow().isoformat()
-            content_data['updated_at'] = datetime.utcnow().isoformat()
+            content_data['created_at'] = datetime.now(timezone.utc).isoformat()
+            content_data['updated_at'] = datetime.now(timezone.utc).isoformat()
             
             # Store content data
             db_ref.child('content').child(content_id).set(content_data)
@@ -260,7 +260,7 @@ class FirebaseDB:
         FirebaseDB._check_initialization()
         
         try:
-            update_data['updated_at'] = datetime.utcnow().isoformat()
+            update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
             db_ref.child('content').child(content_id).update(update_data)
             
             # Update indexes if type or genre changed

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import re
@@ -15,7 +15,8 @@ class UserBase(BaseModel):
         }
     )
 
-    @validator('profile_name')
+    @field_validator('profile_name')
+    @classmethod
     def validate_profile_name(cls, v):
         if not re.match(r'^[a-zA-Z0-9\s\-_]+$', v):
             raise ValueError('Profile name can only contain letters, numbers, spaces, hyphens, and underscores')
@@ -24,7 +25,8 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str = Field(..., min_length=8)
     
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def validate_password(cls, v):
         if not re.match(r'^(?=.*[A-Z])(?=.*[a-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$', v):
             raise ValueError(
@@ -42,7 +44,8 @@ class UserUpdate(BaseModel):
     preferences: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
 
-    @validator('profile_name')
+    @field_validator('profile_name')
+    @classmethod
     def validate_profile_name(cls, v):
         if v is not None:
             if not re.match(r'^[a-zA-Z0-9\s\-_]+$', v):

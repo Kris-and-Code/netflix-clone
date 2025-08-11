@@ -61,7 +61,7 @@ async def update_user_profile(
         DataResponse containing updated user profile
     """
     try:
-        update_data = user_update.model_dump(exclude_unset=True)
+        update_data = user_update.dict(exclude_unset=True)
         
         # Update user in Firebase
         await FirebaseDB.update_user(current_user.id, update_data)

@@ -125,7 +125,7 @@ async def create_content(
         DataResponse containing created content
     """
     try:
-        content_data = content.model_dump()
+        content_data = content.dict()
         content_data["created_by"] = current_user.id
         
         content_id = await FirebaseDB.create_content(content_data)
@@ -180,7 +180,7 @@ async def update_content(
             )
         
         # Update content
-        update_data = content_update.model_dump(exclude_unset=True)
+        update_data = content_update.dict(exclude_unset=True)
         await FirebaseDB.update_content(content_id, update_data)
         
         # Get updated content

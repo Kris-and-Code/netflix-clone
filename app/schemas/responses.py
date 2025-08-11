@@ -1,13 +1,13 @@
 from typing import Generic, TypeVar, Optional, Any
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 
 T = TypeVar('T')
 
 class ResponseBase(BaseModel):
     success: bool
     message: str
-    timestamp: datetime = datetime.utcnow()
+    timestamp: datetime = datetime.now(timezone.utc)
 
 class DataResponse(ResponseBase, Generic[T]):
     data: Optional[T] = None
