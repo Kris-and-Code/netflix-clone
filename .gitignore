@@ -189,4 +189,5 @@ coverage.xml
 test_*.py
 *_test.py
 setup_firebase.py
-init_database.py 
+init_database.py
+.uvicornignore 

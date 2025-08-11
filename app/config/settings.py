@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     
     # Redis (for caching)
     REDIS_URL: Optional[str] = None
+    REDIS_HOST: Optional[str] = None
+    REDIS_PORT: Optional[int] = None
     
     # Email
     SMTP_HOST: Optional[str] = None
@@ -52,6 +54,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Allow extra environment variables
 
 @lru_cache()
 def get_settings() -> Settings:

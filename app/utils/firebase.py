@@ -103,7 +103,9 @@ class FirebaseDB:
             db_ref.child('users').child(user_id).set(user_data)
             
             # Create email index for quick lookups
-            db_ref.child('user_emails').child(user_data['email'].lower()).set(user_id)
+            # Encode email to make it safe for Firebase paths
+            safe_email = user_data['email'].lower().replace('@', '_at_').replace('.', '_dot_')
+            db_ref.child('user_emails').child(safe_email).set(user_id)
             
             return user_id
         except Exception as e:
@@ -116,8 +118,9 @@ class FirebaseDB:
         FirebaseDB._check_initialization()
         
         try:
-            # Get user ID from email index
-            user_id = db_ref.child('user_emails').child(email.lower()).get()
+            # Get user ID from email index (using encoded email)
+            safe_email = email.lower().replace('@', '_at_').replace('.', '_dot_')
+            user_id = db_ref.child('user_emails').child(safe_email).get()
             if not user_id:
                 return None
             
